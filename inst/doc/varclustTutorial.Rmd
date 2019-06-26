@@ -1,0 +1,108 @@
+---
+title: "varclust package tutorial"
+author: "Piotr Sobczyk"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{varclust tutorial}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+## Tutorial for **varclust** package
+
+#### Introduction
+
+**varclust** is a package that enables dimension reduction via variables clustering. 
+We assume that each group of variables can be summarized with few latent variables.
+
+It also provides a function to determine number of principal components in PCA.
+
+This tutorial will gently introduce you to usage of package **varclust** and
+familiarize with its options.
+
+You can install **varclust** from github (current development version).
+```
+install_github("psobczyk/varclust")
+```
+
+or from CRAN
+
+```
+install.package("varclust")
+```
+
+#### Main usage example
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(varclust)
+library(mclust)
+```
+
+Let us consider some real genomic data. We're going to use 
+[FactoMineR package](http://factominer.free.fr/) data.
+As they are no longer available online we added them to this package
+This data consists of two types of variables. First group are gene 
+expression data. The second is RNA data.
+Please note that it may take few minutes to run the following code:
+```{r, warning=FALSE}
+comp_file_name <- system.file("extdata", "gene.csv", package = "varclust")
+comp <- read.table(comp_file_name, sep=";", header=T, row.names=1) 
+benchmarkClustering <- c(rep(1, 68), rep(2, 356))    
+comp <- as.matrix(comp[,-ncol(comp)])
+set.seed(2)
+mlcc.fit <- mlcc.bic(comp, numb.clusters = 1:10, numb.runs = 10, max.dim = 8, greedy = TRUE, 
+                     estimate.dimensions = TRUE, numb.cores = 1, verbose = FALSE)
+print(mlcc.fit)
+plot(mlcc.fit)
+mclust::adjustedRandIndex(mlcc.fit$segmentation, benchmarkClustering)
+misclassification(mlcc.fit$segmentation, benchmarkClustering, max(table(benchmarkClustering)), 2)
+integration(mlcc.fit$segmentation, benchmarkClustering)
+```
+
+Please note that although we use *benchmarkClustering* as a reference, it is not
+an oracle. Some variables from expression data can be highly correlated and act together with RNA data. 
+
+##### More details about the method
+The algorithm aims to reduce dimensionality of data by clustering variables.
+It is assumed that variables lie in few low-rank subspaces. Our iterative algorithm
+recovers their partition as well as estimates number of clusters and dimensions
+of subspaces. This kind of problem is called Subspace Clustering. For a reference
+comparing multiple approaches [see here.](http://cis.jhu.edu/~rvidal/publications/SPM-Tutorial-Final.pdf)
+
+#### Running algorithm with some initial segmentation
+
+You should also use **mlcc.reps** function if you have some apriori knowledge regarding true segmentation.
+You can enforce starting point
+```{r, warning=FALSE}
+mlcc.fit3 <- mlcc.reps(comp, numb.clusters = 2, numb.runs = 0, max.dim = 8, 
+                       initial.segmentations = list(benchmarkClustering), numb.cores = 1)
+print(mlcc.fit3)
+mclust::adjustedRandIndex(mlcc.fit3$segmentation, benchmarkClustering)
+misclassification(mlcc.fit3$segmentation, benchmarkClustering, max(table(benchmarkClustering)), 2)
+integration(mlcc.fit3$segmentation, benchmarkClustering)
+```
+
+#### Execution time
+Execution time of **mlcc.bic** depends mainly on:
+
+1. Number of clusters (*numb.clusters*)
+2. Number of variables 
+3. Number of runs of k-means algorithm (*numb.runs*)
+
+For a dataset of 1000 variables and 10 clusters computation takes about 
+8 minutes on Intel(R) Core(TM) i7-4770 CPU @ 3.40GHz.
+
+#### Choosing values of parameters
+
+* If possible one should use multiple cores for computation. By default all 
+  but one cores are used. User can override this with **numb.cores** parameter
+* For more precise segmentation one should increase **numb.runs**. 
+  Default value is 20
+* Parameter **max.dim** should reflect how large we expect subspaces to be. 
+  Default value is 4
+* If parameter **greedy** is TRUE (value set by default) the number of clusters
+  is estimated in a greedy way. So program stops after getting first 
+  BIC local maximum
+* If **estimate.dimensions** is TRUE subspaces dimensions are estimated. 
+  Otherwise all subspaces are assumed to be of dimension *max.dim*
